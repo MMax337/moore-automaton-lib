@@ -22,6 +22,6 @@ int ma_disconnect(moore_t* a_in, size_t in, size_t num);
 int ma_set_input(moore_t* a, const bits_t* input);
 int ma_set_state(moore_t* a, const bits_t* state);
 const bits_t* ma_get_output(const moore_t* a);
-int ma_step(moore_t *at[], size_t num);
+int ma_step(moore_t* at[], size_t num);
 
 #endif
