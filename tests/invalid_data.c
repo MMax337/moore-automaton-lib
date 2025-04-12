@@ -202,6 +202,9 @@ static int invalid_step(void) {
   size_t n = 10;
   moore_t* m[n];
 
+  ASSERT(ma_step(NULL, 10) == -1 && errno == EINVAL);
+  errno = 0;
+
   for (size_t i = 0; i < n; ++i) {
     m[i] = ma_create_simple(1, 1, sum_trans);
     ASSERT(m[i] != NULL);

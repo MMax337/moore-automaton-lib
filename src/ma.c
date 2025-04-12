@@ -354,7 +354,7 @@ int ma_disconnect(moore_t* a_in, size_t in, size_t num) {
 }
 
 int ma_step(moore_t* at[], size_t num) {
-  bool ok = num != 0;
+  bool ok = num != 0 && at;
   if (ok) {
     for (size_t i = 0; i < num && ok; ++i) {
       ok = at[i] != NULL;
