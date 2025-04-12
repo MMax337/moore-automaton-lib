@@ -2,7 +2,7 @@
 #undef NDEBUG
 #endif
 
-#include "tests/test.h"
+#include "../tests/test.h"
 #include "stdio.h"
 #include <string.h>
 

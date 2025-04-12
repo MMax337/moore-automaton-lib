@@ -1,8 +1,8 @@
 #ifndef TEST_H
 #define TEST_H
 
-#include "../ma.h"
-#include "../memory_tests.h"
+#include "../src/ma.h"
+#include "../src/memory_tests.h"
 #include "assert.h"
 
 // Test results.
