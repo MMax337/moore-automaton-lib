@@ -101,6 +101,12 @@ static int invalid_connect(void) {
 
   ASSERT(m[0] != NULL && m[1] != NULL);
 
+  ASSERT(ma_connect(m[0], 1, m[1], 1, SIZE_MAX) && errno == EINVAL);
+  errno = 0;
+
+  ASSERT(ma_connect(m[0], input0, m[1], input0, SIZE_MAX - input0 + 1) && errno == EINVAL);
+  errno = 0;
+
   ASSERT(ma_connect(NULL, 0, m[1], 0, 1) == -1 && errno == EINVAL);
   errno = 0;
 

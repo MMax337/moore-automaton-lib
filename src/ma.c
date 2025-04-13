@@ -4,9 +4,11 @@
 #include <string.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <limits.h>
 
-#define BITS_PER_BYTE 8
 #define INIT_MEM_SIZE 10
+
+typedef uint64_t bits_t;
 
 typedef struct {
   size_t  bit_idx;      // Either an input bit or output bit, depending on the connection type.
@@ -98,7 +100,7 @@ static void pop_back(output_connection_t* conns) {
 // Converts the `s` bits to `ceil(s/word_len)` where 
 // the `word_len` is given by number of bits in `bits_t`
 static size_t bits_to_words(size_t s) {
-  size_t bits_per_word = BITS_PER_BYTE * sizeof(bits_t);
+  size_t bits_per_word = CHAR_BIT * sizeof(bits_t);
   return (s + bits_per_word - 1) / bits_per_word;
 }
 
@@ -108,22 +110,22 @@ static void id_output(bits_t* output, const bits_t* state, size_t, size_t s) {
 
 // Retrieves the n-th bit from `bits`, where n is 0-based.
 static int get_bit(const bits_t* bits, size_t n) {
-  size_t idx = n / (BITS_PER_BYTE * sizeof(bits_t));
-  size_t bit_idx = n % (BITS_PER_BYTE * sizeof(bits_t));
+  size_t idx = n / (CHAR_BIT * sizeof(bits_t));
+  size_t bit_idx = n % (CHAR_BIT * sizeof(bits_t));
 
   return (bits[idx] >> bit_idx) & ((bits_t) 1);
 }
 
 static void set_bit(bits_t* bits, size_t n) {
-  size_t idx = n / (BITS_PER_BYTE * sizeof(bits_t));
-  size_t bit_idx = n % (BITS_PER_BYTE * sizeof(bits_t));
+  size_t idx = n / (CHAR_BIT * sizeof(bits_t));
+  size_t bit_idx = n % (CHAR_BIT * sizeof(bits_t));
 
   bits[idx] |= ((bits_t) 1) << bit_idx;
 }
 
 static void unset_bit(bits_t* bits, size_t n) {
-  size_t idx = n / (BITS_PER_BYTE * sizeof(bits_t));
-  size_t bit_idx = n % (BITS_PER_BYTE * sizeof(bits_t));
+  size_t idx = n / (CHAR_BIT * sizeof(bits_t));
+  size_t bit_idx = n % (CHAR_BIT * sizeof(bits_t));
 
   bits[idx] &= ~(((bits_t) 1) << bit_idx);
 }
@@ -135,6 +137,11 @@ static void copy_bit(bits_t* bits, int bit, size_t n) {
   } else {
     unset_bit(bits, n);
   }
+}
+
+// Returns true if the range [`start`, `start + num`) is within total_bits, safely handling overflow.
+static bool is_valid_range(size_t start, size_t total_bits, size_t num) {
+  return num <= SIZE_MAX - start && start + num <= total_bits;
 }
 
 // Removes the connection between `aut_idx` automaton in output connections `conn`
@@ -168,7 +175,7 @@ static void disconnect_input(input_connection_t* conn) {
 }
 
 moore_t* ma_create_full(size_t n, size_t m, size_t s, transition_function_t t,
-                        output_function_t y, const bits_t* q) {
+                        output_function_t y, const uint64_t* q) {
 
   if (m == 0 || s == 0 || !t || !y || !q) {
     errno = EINVAL;
@@ -227,6 +234,11 @@ moore_t* ma_create_full(size_t n, size_t m, size_t s, transition_function_t t,
 }
 
 moore_t* ma_create_simple(size_t n, size_t m, transition_function_t t) {
+  if (m == 0 || !t ) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   bits_t* init_state = calloc(bits_to_words(m), sizeof(*init_state));
 
   if (!init_state) {
@@ -270,7 +282,7 @@ void ma_delete(moore_t* a) {
   free(a);
 }
 
-int ma_set_state(moore_t* a, const bits_t* state) {
+int ma_set_state(moore_t* a, const uint64_t* state) {
   if (!a || !state) {
     errno = EINVAL;
     return -1;
@@ -282,7 +294,7 @@ int ma_set_state(moore_t* a, const bits_t* state) {
   return 0;
 }
 
-int ma_set_input(moore_t* a, const bits_t* input) {
+int ma_set_input(moore_t* a, const uint64_t* input) {
   if (!a || !input || a->num_input_bits == 0) {
     errno = EINVAL;
     return -1;
@@ -299,7 +311,7 @@ int ma_set_input(moore_t* a, const bits_t* input) {
   return 0;
 }
 
-const bits_t* ma_get_output(const moore_t* a) {
+const uint64_t* ma_get_output(const moore_t* a) {
   if (!a) {
     errno = EINVAL;
     return NULL;
@@ -310,7 +322,8 @@ const bits_t* ma_get_output(const moore_t* a) {
 
 int ma_connect(moore_t* a_in, size_t in, moore_t* a_out, size_t out, size_t num) {
   if (!a_in || !a_out || num == 0 ||
-      in + num > a_in->num_input_bits || out + num > a_out->num_output_bits) {
+      !is_valid_range(in, a_in->num_input_bits, num) || 
+      !is_valid_range(out, a_out->num_output_bits, num)) {
     errno = EINVAL;
     return -1;
   }
@@ -335,7 +348,7 @@ int ma_connect(moore_t* a_in, size_t in, moore_t* a_out, size_t out, size_t num)
 }
 
 int ma_disconnect(moore_t* a_in, size_t in, size_t num) {
-  if (!a_in || num == 0 || in + num > a_in->num_input_bits) {
+  if (!a_in || num == 0 || !is_valid_range(in, a_in->num_input_bits, num)) {
     errno = EINVAL;
     return -1;
   }
@@ -355,10 +368,8 @@ int ma_disconnect(moore_t* a_in, size_t in, size_t num) {
 
 int ma_step(moore_t* at[], size_t num) {
   bool ok = num != 0 && at;
-  if (ok) {
-    for (size_t i = 0; i < num && ok; ++i) {
-      ok = at[i] != NULL;
-    }
+  for (size_t i = 0; i < num && ok; ++i) {
+    ok = at[i] != NULL;
   }
 
   if (!ok) {
