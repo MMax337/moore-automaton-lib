@@ -11,8 +11,8 @@
 typedef uint64_t bits_t;
 
 typedef struct {
-  size_t  bit_idx;      // Either an input bit or output bit, depending on the connection type.
-  moore_t* automaton;   
+  moore_t* automaton; // Pointer to the connected automaton.
+  size_t  bit_idx;    // Index of the bit within the connected automaton (either input or output).
 } connection_t;
 
 typedef struct {
@@ -23,26 +23,27 @@ typedef struct {
 typedef struct {
   size_t sz;
   size_t capacity;
-  connection_t* connections;
+  connection_t* connections;  // Dynamic array of connections.
 } output_connection_t;
 
 struct moore {
-  size_t state_bit_count;    // Number of bits representing a state
-  size_t num_input_bits;     // Number of bit signals for input
-  size_t num_output_bits;    // Number of bit signals for output
+  size_t state_bit_count;    // Number of bits representing a state.
+  size_t num_input_bits;     // Number of bit signals for `input`.
+  size_t num_output_bits;    // Number of bit signals for `output`.
 
-  bits_t* next_state;        // Next state that is used for performance purposes.
+  bits_t* next_state;        // Used for performance: avoids repeated allocations of next state bits.
   bits_t* state;             // Current state.
   bits_t* output;
   bits_t* input;
 
-  input_connection_t* input_connections;     // Array of size num_input_bits.
-  output_connection_t* output_connections;   // Array of size num_output_bits.
+  input_connection_t* input_connections;     // Array of size `num_input_bits`.
+  output_connection_t* output_connections;   // Array of size `num_output_bits`.
 
   transition_function_t trans_func;
   output_function_t out_func;
 };
 
+// Initializes a dynamic array `output_connection_t` with `0` capacity.
 static int lazy_init_output_connection(output_connection_t* conn) {
   conn->sz = 0;
   conn->capacity = 0;
@@ -51,6 +52,7 @@ static int lazy_init_output_connection(output_connection_t* conn) {
   return 0;
 }
 
+// Initializes a dynamic array `output_connection_t` with default (`INIT_MEM_SIZE`) capacity.
 static int init_output_connection(output_connection_t* conn) {
   conn->sz = 0;
   conn->connections = malloc(INIT_MEM_SIZE * sizeof(*conn->connections));
@@ -98,7 +100,7 @@ static void pop_back(output_connection_t* conns) {
 }
 
 // Converts the `s` bits to `ceil(s/word_len)` where 
-// the `word_len` is given by number of bits in `bits_t`
+// the `word_len` is given by number of bits in `bits_t`.
 static size_t bits_to_words(size_t s) {
   size_t bits_per_word = CHAR_BIT * sizeof(bits_t);
   return (s + bits_per_word - 1) / bits_per_word;
@@ -108,7 +110,7 @@ static void id_output(bits_t* output, const bits_t* state, size_t, size_t s) {
   memcpy(output, state, sizeof(bits_t) * bits_to_words(s)); 
 }
 
-// Retrieves the n-th bit from `bits`, where n is 0-based.
+// Retrieves the `n`-th bit from `bits`. Indexing is 0-based.
 static int get_bit(const bits_t* bits, size_t n) {
   size_t idx = n / (CHAR_BIT * sizeof(bits_t));
   size_t bit_idx = n % (CHAR_BIT * sizeof(bits_t));
@@ -116,6 +118,7 @@ static int get_bit(const bits_t* bits, size_t n) {
   return (bits[idx] >> bit_idx) & ((bits_t) 1);
 }
 
+// Sets the `n`-th bit of `bits`. Indexing is 0-based.
 static void set_bit(bits_t* bits, size_t n) {
   size_t idx = n / (CHAR_BIT * sizeof(bits_t));
   size_t bit_idx = n % (CHAR_BIT * sizeof(bits_t));
@@ -123,6 +126,7 @@ static void set_bit(bits_t* bits, size_t n) {
   bits[idx] |= ((bits_t) 1) << bit_idx;
 }
 
+// Unsets the `n`-th bit of `bits`. Indexing is 0-based.
 static void unset_bit(bits_t* bits, size_t n) {
   size_t idx = n / (CHAR_BIT * sizeof(bits_t));
   size_t bit_idx = n % (CHAR_BIT * sizeof(bits_t));
@@ -130,7 +134,7 @@ static void unset_bit(bits_t* bits, size_t n) {
   bits[idx] &= ~(((bits_t) 1) << bit_idx);
 }
 
-// Set n-th bit of `bits` to `bit`. The counting is assumed from 0.
+// Sets n-th bit of `bits` to `bit`. Indexing is 0-based.
 static void copy_bit(bits_t* bits, int bit, size_t n) {
   if (bit) {
     set_bit(bits, n);
@@ -150,7 +154,7 @@ static void disconnect_output(output_connection_t* conn, size_t aut_idx) {
   if (!conn) {
     return;
   }
-
+  
   connection_t tmp = conn->connections[aut_idx];
   conn->connections[aut_idx] = conn->connections[conn->sz - 1];
   pop_back(conn);
@@ -162,7 +166,7 @@ static void disconnect_output(output_connection_t* conn, size_t aut_idx) {
   tmp.automaton->input_connections[tmp.bit_idx].args.automaton = NULL;
 }
 
-// Removes the connection given the input connection.
+// Removes the connection on both sides given the input connection.
 static void disconnect_input(input_connection_t* conn) {
   if (!conn->args.automaton) {
     return;
@@ -207,8 +211,8 @@ moore_t* ma_create_full(size_t n, size_t m, size_t s, transition_function_t t,
 
   if (aut->output_connections) {
     for (size_t i = 0; i < m; ++i) {
-      // Lazily initialize the arrays to avoid unnecessary memory allocation
-      // when there are no active connections, preventing wasted memory.
+      // Lazily initialize arrays to avoid allocating memory when there are
+      // no active connections, preventing unnecessary memory usage.
       lazy_init_output_connection(&aut->output_connections[i]);
     }
   }
@@ -234,7 +238,7 @@ moore_t* ma_create_full(size_t n, size_t m, size_t s, transition_function_t t,
 }
 
 moore_t* ma_create_simple(size_t n, size_t m, transition_function_t t) {
-  if (m == 0 || !t ) {
+  if (m == 0 || !t) {
     errno = EINVAL;
     return NULL;
   }
